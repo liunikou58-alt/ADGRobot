@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ADG Robot - 視覺與聽覺核心</title>
+    <style>
+        /* --- 全局設定 --- */
+        body {
+            background-color: #000000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+            color: #fff;
+            font-family: sans-serif;
+        }
+
+        /* 眼睛容器 */
+        .eyes-container {
+            display: flex;
+            gap: 40px;
+            position: relative;
+            background: repeating-linear-gradient(transparent 0px, transparent 2px, rgba(0, 195, 255, 0.05) 3px);
+            padding: 50px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        /* --- EVE 眼睛基礎樣式 --- */
+        .eye {
+            width: 110px;
+            height: 160px;
+            background-color: #00c3ff;
+            border-radius: 50%;
+            box-shadow: inset 0 0 30px #a6e7ff, 0 0 20px rgba(0, 195, 255, 0.8), 0 0 40px rgba(0, 195, 255, 0.5), 0 0 80px rgba(0, 110, 255, 0.3);
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            animation: eve-blink 5s infinite;
+        }
+
+        .eye#l { transform-origin: center right; }
+        .eye#r { transform-origin: center left; }
+
+        /* 動畫定義 */
+        @keyframes eve-blink {
+            0%, 48%, 52%, 100% { transform: scaleY(1); opacity: 1; }
+            50% { transform: scaleY(0.01); opacity: 0.7; height: 160px;}
+        }
+        @keyframes thinking-float {
+            0%, 100% { transform: translateY(0) scaleX(0.9); }
+            50% { transform: translateY(-15px) scaleX(0.9); }
+        }
+
+        /* 情緒狀態 */
+        body.state-happy .eye { height: 70px; animation: none; border-radius: 50% / 60% 60% 40% 40%; }
+        body.state-happy .eye#l { transform: rotate(-10deg) translateY(10px); }
+        body.state-happy .eye#r { transform: rotate(10deg) translateY(10px); }
+
+        body.state-angry .eye {
+            height: 130px; width: 90px; animation: none; background-color: #ff3333;
+            box-shadow: inset 0 0 30px #ffaaaa, 0 0 20px rgba(255, 50, 50, 0.8), 0 0 60px rgba(255, 0, 0, 0.5);
+        }
+        body.state-angry .eye#l { transform: rotate(30deg); }
+        body.state-angry .eye#r { transform: rotate(-30deg); }
+
+        body.state-sad .eye { height: 140px; width: 100px; animation: none; opacity: 0.8; }
+        body.state-sad .eye#l { transform: rotate(-20deg) translateY(10px); }
+        body.state-sad .eye#r { transform: rotate(20deg) translateY(10px); }
+
+        body.state-surprised .eye {
+            animation: none; width: 140px; height: 170px; border-radius: 50%;
+            box-shadow: inset 0 0 40px #ffffff, 0 0 30px #00c3ff, 0 0 100px #00c3ff; transform: scale(1.1);
+        }
+
+        body.state-thinking .eye { height: 50px; width: 120px; animation: thinking-float 2s infinite ease-in-out; }
+
+        /* 語音文字顯示區 */
+        #transcript-box {
+            position: absolute;
+            bottom: 20px;
+            width: 80%;
+            text-align: center;
+            font-size: 18px;
+            color: #00c3ff;
+            text-shadow: 0 0 10px #00c3ff;
+            min-height: 30px;
+            letter-spacing: 1px;
+        }
+
+        /* 啟動提示 */
+        #start-hint {
+            position: absolute;
+            top: 20px;
+            color: #555;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-hint">點擊螢幕任意處以啟動麥克風</div>
+
+    <div class="eyes-container">
+        <div class="eye" id="l"></div>
+        <div class="eye" id="r"></div>
+    </div>
+
+    <div id="transcript-box">等待喚醒中...</div>
+
+    <script>
+        // --- 視覺情緒控制模組 ---
+        function setEmotion(emotion) {
+            document.body.className = '';
+            if (emotion !== 'neutral') {
+                document.body.classList.add('state-' + emotion);
+            }
+        }
+
+        // --- 語音監聽模組 (Web Speech API) ---
+        const transcriptBox = document.getElementById('transcript-box');
+        const startHint = document.getElementById('start-hint');
+        
+        // 取得瀏覽器的語音辨識引擎 (相容 Chrome/Edge/Safari)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true; // 持續監聽，不自動關閉
+            recognition.interimResults = true; // 即時輸出還沒說完的過程文字
+            recognition.lang = 'zh-TW'; // 設定為繁體中文
+
+            // 當系統開始收音時
+            recognition.onstart = () => {
+                transcriptBox.innerText = '耳朵已開啟，我正在聽...';
+                startHint.style.display = 'none'; // 隱藏提示文字
+                setEmotion('neutral');
+            };
+
+            // 當系統辨識到聲音時
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                // 顯示目前聽到的文字
+                transcriptBox.innerText = finalTranscript || interimTranscript;
+
+                // 如果這句話說完了 (isFinal)
+                if (finalTranscript !== '') {
+                    // 模擬機器人正在思考你說的話
+                    setEmotion('thinking');
+                    
+                    // TODO: 未來這裡就是呼叫 Grok API 的地方
+                    console.log("準備發送給 AI 的文字:", finalTranscript);
+                    
+                    // 思考 2 秒後恢復正常表情
+                    setTimeout(() => {
+                        setEmotion('neutral');
+                    }, 2000);
+                }
+            };
+
+            // 如果發生錯誤（例如沒有權限）
+            recognition.onerror = (event) => {
+                console.error('語音錯誤:', event.error);
+                if(event.error === 'not-allowed') {
+                    transcriptBox.innerText = '請允許麥克風權限！';
+                    setEmotion('sad');
+                }
+            };
+
+            // 核心機制：如果語音引擎意外中斷，立刻重啟它，達成「永遠監聽」
+            recognition.onend = () => {
+                console.log('語音引擎重啟中...');
+                recognition.start();
+            };
+
+            // 必須由使用者的點擊來啟動第一次監聽
+            document.body.addEventListener('click', () => {
+                try {
+                    recognition.start();
+                } catch(e) {
+                    // 如果已經啟動過就忽略報錯
+                }
+            }, { once: true });
+
+        } else {
+            transcriptBox.innerText = '你的瀏覽器不支援語音辨識功能';
+            setEmotion('sad');
+        }
+    </script>
+</body>
+</html>
