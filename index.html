@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ADG Robot - 視覺與聽覺核心</title>
+    <title>ADG Robot - 視覺與語音核心</title>
     <style>
         /* --- 全局設定 --- */
         body {
@@ -102,7 +102,7 @@
 </head>
 <body>
 
-    <div id="start-hint">點擊螢幕任意處以啟動麥克風</div>
+    <div id="start-hint">點擊螢幕任意處以啟動麥克風與大腦</div>
 
     <div class="eyes-container">
         <div class="eye" id="l"></div>
@@ -112,7 +112,7 @@
     <div id="transcript-box">等待喚醒中...</div>
 
     <script>
-        // --- 視覺情緒控制模組 ---
+        // --- 1. 視覺情緒控制模組 ---
         function setEmotion(emotion) {
             document.body.className = '';
             if (emotion !== 'neutral') {
@@ -120,27 +120,91 @@
             }
         }
 
-        // --- 語音監聽模組 (Web Speech API) ---
-        const transcriptBox = document.getElementById('transcript-box');
-        const startHint = document.getElementById('start-hint');
-        
-        // 取得瀏覽器的語音辨識引擎 (相容 Chrome/Edge/Safari)
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true; // 持續監聽，不自動關閉
-            recognition.interimResults = true; // 即時輸出還沒說完的過程文字
-            recognition.lang = 'zh-TW'; // 設定為繁體中文
+        // --- 2. 嘴巴：語音合成模組 (TTS) ---
+        function speak(text) {
+            // 說話時眼睛變成開心的形狀
+            setEmotion('happy'); 
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-TW'; 
+            utterance.rate = 1.1; // 稍微調快語速
+            utterance.pitch = 1.2; // 稍微調高音調
 
-            // 當系統開始收音時
-            recognition.onstart = () => {
-                transcriptBox.innerText = '耳朵已開啟，我正在聽...';
-                startHint.style.display = 'none'; // 隱藏提示文字
+            // 說完話後恢復正常表情
+            utterance.onend = () => {
                 setEmotion('neutral');
             };
 
-            // 當系統辨識到聲音時
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- 3. 大腦：呼叫 Grok API 模組 ---
+        async function thinkAndReply(userText) {
+            const transcriptBox = document.getElementById('transcript-box');
+            setEmotion('thinking'); // 進入思考表情
+            transcriptBox.innerText = "EVE 思考中...";
+
+            // ⚠️ 替換成你的真實 API Key (保留前後的雙引號) ⚠️
+            const GROK_API_KEY = "xai-UGHY4mU1xmnab8bdDeuyLfeY1NKKJuJKAaIHg9sBSOYvJL25c92eWv4fmjsVeeZQtI8Uv2l6ep6GE4j0"; 
+
+            try {
+                const response = await fetch('https://api.x.ai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${GROK_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "grok-beta", 
+                        messages: [
+                            // 這裡設定機器人的靈魂與人設
+                            {role: "system", content: "你是一個安裝在桌面上的實體陪伴機器人，名字叫 EVE。你的個性聰明、有點傲嬌。請務必用繁體中文回答，並且回答要「極度簡短」，像日常對話一樣，絕對不要超過兩句話。"},
+                            {role: "user", content: userText}
+                        ],
+                        temperature: 0.7
+                    })
+                });
+
+                const data = await response.json();
+                
+                if(data.error) {
+                    console.error("API 錯誤:", data.error);
+                    transcriptBox.innerText = "大腦連線失敗，請檢查 API Key";
+                    speak("我的大腦連線好像有問題，請檢查設定。");
+                    setEmotion('sad');
+                    return;
+                }
+
+                // 取得 AI 的回答並說出來
+                const aiReply = data.choices[0].message.content;
+                transcriptBox.innerText = aiReply;
+                speak(aiReply);
+
+            } catch (error) {
+                console.error('網路錯誤:', error);
+                transcriptBox.innerText = "網路斷線了...";
+                speak("我現在連不上網路喔。");
+                setEmotion('sad');
+            }
+        }
+
+        // --- 4. 耳朵：語音監聽模組 (Web Speech API) ---
+        const transcriptBox = document.getElementById('transcript-box');
+        const startHint = document.getElementById('start-hint');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'zh-TW';
+
+            recognition.onstart = () => {
+                transcriptBox.innerText = '耳朵已開啟，我正在聽...';
+                startHint.style.display = 'none';
+                setEmotion('neutral');
+            };
+
             recognition.onresult = (event) => {
                 let interimTranscript = '';
                 let finalTranscript = '';
@@ -153,46 +217,34 @@
                     }
                 }
 
-                // 顯示目前聽到的文字
                 transcriptBox.innerText = finalTranscript || interimTranscript;
 
-                // 如果這句話說完了 (isFinal)
-                if (finalTranscript !== '') {
-                    // 模擬機器人正在思考你說的話
-                    setEmotion('thinking');
-                    
-                    // TODO: 未來這裡就是呼叫 Grok API 的地方
-                    console.log("準備發送給 AI 的文字:", finalTranscript);
-                    
-                    // 思考 2 秒後恢復正常表情
-                    setTimeout(() => {
-                        setEmotion('neutral');
-                    }, 2000);
+                // 聽到完整句子後，交給 Grok 處理
+                if (finalTranscript.trim() !== '') {
+                    console.log("聽到人類說:", finalTranscript);
+                    thinkAndReply(finalTranscript);
                 }
             };
 
-            // 如果發生錯誤（例如沒有權限）
             recognition.onerror = (event) => {
-                console.error('語音錯誤:', event.error);
                 if(event.error === 'not-allowed') {
                     transcriptBox.innerText = '請允許麥克風權限！';
                     setEmotion('sad');
                 }
             };
 
-            // 核心機制：如果語音引擎意外中斷，立刻重啟它，達成「永遠監聽」
             recognition.onend = () => {
-                console.log('語音引擎重啟中...');
+                // 無限重啟，達成無喚醒詞持續監聽
                 recognition.start();
             };
 
-            // 必須由使用者的點擊來啟動第一次監聽
+            // 必須由使用者的點擊來解鎖音訊權限並啟動監聽
             document.body.addEventListener('click', () => {
-                try {
-                    recognition.start();
-                } catch(e) {
-                    // 如果已經啟動過就忽略報錯
-                }
+                try { recognition.start(); } catch(e) {}
+                
+                // 偷偷播放一段空白音訊，解鎖瀏覽器的語音合成權限
+                const unlockAudio = new SpeechSynthesisUtterance('');
+                window.speechSynthesis.speak(unlockAudio);
             }, { once: true });
 
         } else {
